@@ -1,7 +1,7 @@
 import torch
 from torch import nn 
 from torch._prims_common import Tensor
-from torch.functional import F
+import torch.nn.functional as F
 
 
 
@@ -26,8 +26,8 @@ class BitLinear(nn.Linear):
     ):
         super(BitLinear, self).__init__(in_features, out_features, bias, device, dtype)
         self.bit = bit
-        self.eps = 1e-8
         self.ln = nn.LayerNorm(in_features)
+        self.eps = 1e-05 # the eps usually used is 1e-05
         #self.alpha = torch.sum(self.weight) / (self.weight.size(0) * self.weight.size(0))
         self.alpha = torch.mean(self.weight)
         self.beta = self.weight.abs().mean()
@@ -35,13 +35,18 @@ class BitLinear(nn.Linear):
         self.Qb = 2 ** (bit - 1) 
 
     def forward(self, input):
-            x = self.binarized_weight @ self._quantize(input)
-            x = torch.var(x)
-            return torch.sign(input) * torch.sign(self.weight) * (2 ** (self.bit - 1))
+            # normalize, quantize, transform, dequantize
+            x = self.ln(input)
+            self.gamma = torch.norm(x, p=torch.inf) # torch.max() will do too I guess??
+            x_hat = self._quantize(x)
+            y = self._dequantize(F.linear(x_hat, self.binarized_weight, self.bias))
+            return y
+
+    def _dequantize(self, x):
+        return x * self.beta * self.gamma / self.Qb
 
     def _quantize(self, x):
-        gamma = torch.norm(x, p=torch.inf) # torch.max() will do too I guess??
-        v = x * (self.Qb / gamma)
+        v = x * (self.Qb / self.gamma)
         w = -self.Qb + self.eps
         x = self.Qb - self.eps
         return torch.clip(v, w, x) 
@@ -57,6 +62,14 @@ class BitLinear(nn.Linear):
 
     def extra_repr(self):
         return 'in_features={}, out_features={}, bias={}, bit={}'.format(
-            self.in_features, self.out_features, self.bias is not None, self.bit
+            self.in_features,
+            self.out_features,
+            self.bias,
+            self.bit
         )
 
+if __name__ == "__main__":
+    x = BitLinear(5,5, bias=False)
+    print(x)
+    e = x(torch.rand((5,5)))
+    print(e)
