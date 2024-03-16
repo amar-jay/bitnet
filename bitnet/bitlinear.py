@@ -43,13 +43,16 @@ class BitLinear(nn.Linear):
         input = self.ln(input)
         B, T, C = input.size()
 
-        x_groups = torch.chunk(input, self.n_groups, dim=1)
+        x_groups = torch.stack(torch.chunk(input, self.n_groups, dim=1))
 
         # normalize, quantize, transform, dequantize
-        gamma = torch.stack([torch.max(x) for x in x_groups], dim=0) # gammas for each group. This may not be the best way to do it
+        # gamma = torch.stack([torch.max(x) for x in x_groups], dim=0) # gammas for each group. This may not be the best way to do it
+        gamma = torch.max(x_groups.view(self.n_groups, -1), dim=1).values
         # self.gamma = torch.norm(x, p=torch.inf) # torch.max() will do too I guess??
         
-        x_hat = torch.stack([self._quantize(x, gamma[i]) for i in range(self.n_groups)]).view(B, T, C)
+        #x_hat = torch.stack([self._quantize(x_groups[i], gamma[i]) for i in range(self.n_groups)]).view(B, T, C)
+        # let broadcasting do the work
+        x_hat = self._quantize(x_groups, gamma).view(B, T, C)
 
         y = F.linear(x_hat, self.binarized_weight, self.bias)
         y = self._dequantize(y, gamma)
@@ -91,5 +94,5 @@ class BitLinear(nn.Linear):
 if __name__ == "__main__":
     x = BitLinear(5,5, bias=False)
     print(x)
-    e = x(torch.rand((5,5)))
+    e = x(torch.rand((10, 5,5)))
     print(e)
