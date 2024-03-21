@@ -38,6 +38,9 @@ class BitLinear(nn.Linear):
         self.beta = self.weight.abs().mean()
         self.binarized_weight = self._ste(self.weight - self.alpha)
         self.Qb = 2 ** (bit - 1) 
+        
+        # to reduce memory overhead
+        del self.weight
 
     def forward(self, input):
         input = self.ln(input)
