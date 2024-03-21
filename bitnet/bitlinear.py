@@ -37,10 +37,13 @@ class BitLinear(nn.Linear):
         self.alpha = torch.mean(self.weight)
         self.beta = self.weight.abs().mean()
 
-        # Initialize 1-bit quantized weights and store them as int8
-        self.register_buffer(
-            "binarized_weight", self._ste(self.weight - self.alpha)
-        )
+        # using buffers to store weight. Im still not convinced that buffers is 
+        # useful in this case
+        # self.register_buffer(
+        #     "binarized_weight", self._ste(self.weight - self.alpha)
+        # )
+        
+        self.binarized_weight = self._ste(self.weight - self.alpha)
 
         self.Qb = 2 ** (bit - 1) 
         
@@ -51,7 +54,8 @@ class BitLinear(nn.Linear):
         input = self.ln(input)
         B, T, C = input.size()
 
-        x_groups = torch.stack(torch.chunk(input, self.n_groups, dim=1))
+        x_groups = torch.split(input, input.size(1) // self.n_groups, dim=1)
+
 
         # normalize, quantize, transform, dequantize
         # gamma = torch.stack([torch.max(x) for x in x_groups], dim=0) # gammas for each group. This may not be the best way to do it
