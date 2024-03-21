@@ -36,7 +36,12 @@ class BitLinear(nn.Linear):
         #self.alpha = torch.sum(self.weight) / (self.weight.size(0) * self.weight.size(0))
         self.alpha = torch.mean(self.weight)
         self.beta = self.weight.abs().mean()
-        self.binarized_weight = self._ste(self.weight - self.alpha)
+
+        # Initialize 1-bit quantized weights and store them as int8
+        self.register_buffer(
+            "binarized_weight", self._ste(self.weight - self.alpha)
+        )
+
         self.Qb = 2 ** (bit - 1) 
         
         # to reduce memory overhead
