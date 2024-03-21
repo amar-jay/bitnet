@@ -21,16 +21,15 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-class LayerNorm(nn.Module):
+class RMSNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
-    def __init__(self, ndim, bias):
+    def __init__(self):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(ndim))
-        self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
+        self.eps=1e-5
 
-    def forward(self, input):
-        return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
+    def forward(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
 class CausalSelfAttention(nn.Module):
 
@@ -103,7 +102,7 @@ class Block(nn.Module):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_2 = RMSNorm()
         self.mlp = MLP(config)
 
     def forward(self, x):
@@ -135,7 +134,7 @@ class GPT(nn.Module):
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+            ln_f = RMSNorm(),
         ))
         self.lm_head = BitLinear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
